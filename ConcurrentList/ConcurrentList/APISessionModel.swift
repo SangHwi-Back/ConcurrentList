@@ -37,7 +37,7 @@ class APISessionModel {
                 return
             }
             guard let data = data else {
-                LoggerUtil.debugLog(message: "Look this data: \(data)")
+                LoggerUtil.debugLog(message: "Look this data: nil")
                 completionHandler(nil)
                 return
             }
