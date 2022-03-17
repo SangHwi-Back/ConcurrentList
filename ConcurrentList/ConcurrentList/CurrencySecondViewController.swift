@@ -80,8 +80,13 @@ extension CurrencySecondViewController: UITableViewDataSource {
             guard let target = target as? CustomTableViewCell else { return }
             target.cellImage = UIImage(data: data)
         }
-        groupCellTaskModel.processConcurrent(target: cell) { target in
-            if let target = target as? CustomTableViewCell, let image = target.cellImage {
+        groupCellTaskModel.notifyCustomCellGroup(target: cell) { target in
+            guard let target = target as? CustomTableViewCell else {
+                imageTask.cancel()
+                return
+            }
+            
+            if target.cellImage == nil {
                 imageTask.cancel()
             }
         }
