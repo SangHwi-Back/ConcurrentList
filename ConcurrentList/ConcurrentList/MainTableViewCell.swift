@@ -10,6 +10,7 @@ import WebKit
 
 class MainTableViewCell: UITableViewCell, WKUIDelegate, WKNavigationDelegate {
     
+    @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet weak var cellImageView: UIImageView!
     @IBOutlet weak var cellWebView: WKWebView!
     

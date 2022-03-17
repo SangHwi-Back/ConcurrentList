@@ -15,12 +15,13 @@ class CurrencyFirstViewController: UIViewController {
         didSet {
             DispatchQueue.main.async {
                 self.currencyTableView.reloadData()
+                self.refreshControl.endRefreshing()
             }
         }
     }
-    private var isEnableRefresh = true
     private let identifier = String(describing: CustomTableViewCell.self)
-    
+    private var preDefinedRowHeights = [IndexPath: Float]()
+
     @IBOutlet weak var currencyTableView: UITableView!
     
     override func viewDidLoad() {
@@ -41,12 +42,10 @@ class CurrencyFirstViewController: UIViewController {
     }
     
     @objc func refreshTableView(_ sender: Any) {
-        fetchRequest()
+        fetchRequest(isReload: true)
     }
     
     func fetchRequest(isReload: Bool = false) {
-        
-        guard isEnableRefresh else { return }
         
         if isReload {
             fetchDataResults.removeAll()
@@ -54,7 +53,7 @@ class CurrencyFirstViewController: UIViewController {
         
         networkModel.sendRequest(from: fetchDataResults.count+1, to: fetchDataResults.count+10) { [weak self] culturalData in
             guard let self = self else { return }
-            guard let culturalData = culturalData else { self.isEnableRefresh.toggle(); return }
+            guard let culturalData = culturalData else { return }
             self.fetchDataResults.append(contentsOf: culturalData)
         }
     }
@@ -64,48 +63,47 @@ extension CurrencyFirstViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         fetchDataResults.count
     }
-    
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(withIdentifier: identifier) as? CustomTableViewCell else {
             LoggerUtil.faultLog(message: "DequereusableCell initialize failed from ConcurrencyFirstViewController")
             return UITableViewCell()
         }
-        
+
+        let model = self.fetchDataResults[indexPath.row]
+
+        cell.delegate = self
+        cell.numberLabel.text = "\(indexPath.row)"
+
+        cell.indexPath = indexPath
+
         DispatchQueue.global(qos: .userInitiated).async {
-            
-            let model = self.fetchDataResults[indexPath.row]
-            cell.indexPath = indexPath
-            cell.delegate = self
-            cell.preDefinedRowHeight = model.rowHeight
-            
-            var cellImage: UIImage? = nil
-            
+            var image: UIImage?
             if let url = URL(string: model.MAIN_IMG), let data = try? Data(contentsOf: url) {
-                cellImage = UIImage(data: data)
+                image = UIImage(data: data)
             }
-            
+
             DispatchQueue.main.async {
-                cell.cellImageView.image = cellImage
+                if let image = image {
+                    cell.cellImageView.image = image
+                }
                 cell.cellWebView.loadHTMLString(model.FAC_DESC, baseURL: nil)
             }
         }
-        
+
         return cell
     }
-    
+
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let cell = tableView.cellForRow(at: indexPath) as? CustomTableViewCell else {
+        guard fetchDataResults.count-1 >= indexPath.row, let rowHeight = preDefinedRowHeights[indexPath] else {
             return UITableView.automaticDimension
         }
-        
-        let rowHeight = fetchDataResults[indexPath.row].rowHeight ?? cell.preDefinedRowHeight
-        return rowHeight == nil ? UITableView.automaticDimension : CGFloat(rowHeight!)
+        return CGFloat(rowHeight)
     }
 }
 
 extension CurrencyFirstViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard isEnableRefresh else { return }
         if indexPath.row == fetchDataResults.count-1 {
             fetchRequest()
         }
@@ -114,17 +112,10 @@ extension CurrencyFirstViewController: UITableViewDelegate {
 
 extension CurrencyFirstViewController: CustomCellSizeDelegate {
     func customCellDidFinishLoad(using height: CGFloat, at indexPath: IndexPath) {
-        guard
-            fetchDataResults[indexPath.row].rowHeight == nil,
-            let cell = currencyTableView.cellForRow(at: indexPath) as? CustomTableViewCell
-        else {
-            return
-        }
+        guard let cell = currencyTableView.cellForRow(at: indexPath) as? CustomTableViewCell else { return }
         
         currencyTableView.beginUpdates()
-        cell.cellWebView.heightAnchor.constraint(greaterThanOrEqualToConstant: height/2).isActive = true
-        cell.setNeedsLayout()
-        cell.setNeedsDisplay()
+        preDefinedRowHeights.updateValue(Float(cell.cellImageView.frame.height+height/2), forKey: indexPath)
         currencyTableView.endUpdates()
     }
 }

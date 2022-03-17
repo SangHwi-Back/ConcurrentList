@@ -14,12 +14,14 @@ protocol CustomCellSizeDelegate {
 
 class CustomTableViewCell: UITableViewCell, WKUIDelegate, WKNavigationDelegate {
 
+    @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet var cellImageView: UIImageView!
     @IBOutlet var cellWebView: WKWebView!
     
     var delegate: CustomCellSizeDelegate?
     var indexPath: IndexPath?
-    var preDefinedRowHeight: Float? // property sholudn't execute javascript action mutiple.
+    var htmlString: String?
+    var cellImage: UIImage?
     
     override func awakeFromNib() {
         super.awakeFromNib()
@@ -29,12 +31,8 @@ class CustomTableViewCell: UITableViewCell, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        
         guard webView.isLoading == false else { return }
-        
-        if preDefinedRowHeight == nil {
-            evaluateHeightUsingJavaScript(webView)
-        }
+        evaluateHeightUsingJavaScript(webView)
     }
     
     func evaluateHeightUsingJavaScript(_ webView: WKWebView) {
@@ -42,11 +40,7 @@ class CustomTableViewCell: UITableViewCell, WKUIDelegate, WKNavigationDelegate {
             guard let self = self else { return }
             guard let height = result as? CGFloat, let indexPath = self.indexPath else { return }
             
-            self.delegate?
-                .customCellDidFinishLoad(
-                    using: (height > 300 ? 300 : height),
-                    at: indexPath
-                )
+            self.delegate?.customCellDidFinishLoad(using: (height > 300 ? 300 : height), at: indexPath)
         }
     }
 }

@@ -15,11 +15,13 @@ class CurrencySecondViewController: UIViewController {
         didSet {
             DispatchQueue.main.async {
                 self.currencyTableView.reloadData()
+                self.refreshControl.endRefreshing()
             }
         }
     }
-    private var isEnableRefresh = true
     private let identifier = String(describing: CustomTableViewCell.self)
+    private var preDefinedRowHeights = [IndexPath: Float]()
+    private let groupCellTaskModel = GroupTaskModel(qos: .userInteractive)
     
     @IBOutlet weak var currencyTableView: UITableView!
     
@@ -41,20 +43,15 @@ class CurrencySecondViewController: UIViewController {
     }
     
     @objc func refreshTableView(_ sender: Any) {
-        fetchRequest()
+        fetchRequest(isReload: true)
     }
     
     func fetchRequest(isReload: Bool = false) {
         
-        guard isEnableRefresh else { return }
-        
-        if isReload {
-            fetchDataResults.removeAll()
-        }
+        if isReload { fetchDataResults.removeAll() }
         
         networkModel.sendRequest(from: fetchDataResults.count+1, to: fetchDataResults.count+10) { [weak self] culturalData in
-            guard let self = self else { return }
-            guard let culturalData = culturalData else { self.isEnableRefresh.toggle(); return }
+            guard let self = self, let culturalData = culturalData else { return }
             self.fetchDataResults.append(contentsOf: culturalData)
         }
     }
@@ -71,41 +68,48 @@ extension CurrencySecondViewController: UITableViewDataSource {
             return UITableViewCell()
         }
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            
-            let model = self.fetchDataResults[indexPath.row]
-            cell.indexPath = indexPath
-            cell.delegate = self
-            cell.preDefinedRowHeight = model.rowHeight
-            
-            var cellImage: UIImage? = nil
-            
-            if let url = URL(string: model.MAIN_IMG), let data = try? Data(contentsOf: url) {
-                cellImage = UIImage(data: data)
+        let model = fetchDataResults[indexPath.row]
+        
+        cell.delegate = self
+        cell.numberLabel.text = "\(indexPath.row)"
+        
+        cell.htmlString = model.FAC_DESC
+        cell.indexPath = indexPath
+        
+        let imageTask = groupCellTaskModel.processConcurrentImage(target: cell, urlString: model.MAIN_IMG) { target, data in
+            guard let target = target as? CustomTableViewCell else { return }
+            target.cellImage = UIImage(data: data)
+        }
+        groupCellTaskModel.processConcurrent(target: cell) { target in
+            if let target = target as? CustomTableViewCell, let image = target.cellImage {
+                imageTask.cancel()
             }
-            
-            DispatchQueue.main.async {
-                cell.cellImageView.image = cellImage
-                cell.cellWebView.loadHTMLString(model.FAC_DESC, baseURL: nil)
+        }
+        let someSerialTask = groupCellTaskModel.processSerial(target: cell) { target in
+            guard let target = target as? CustomTableViewCell else { return }
+            target.cellImageView.image = target.cellImage
+        }
+        groupCellTaskModel.notifyCustomCellGroup(target: cell) { target in
+            guard let target = target as? CustomTableViewCell, let htmlString = target.htmlString else {
+                someSerialTask.cancel()
+                return
             }
+            target.cellWebView.loadHTMLString(htmlString, baseURL: nil)
         }
         
         return cell
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let cell = tableView.cellForRow(at: indexPath) as? CustomTableViewCell else {
+        guard fetchDataResults.count-1 >= indexPath.row, let rowHeight = preDefinedRowHeights[indexPath] else {
             return UITableView.automaticDimension
         }
-        
-        let rowHeight = fetchDataResults[indexPath.row].rowHeight ?? cell.preDefinedRowHeight
-        return rowHeight == nil ? UITableView.automaticDimension : CGFloat(rowHeight!)
+        return CGFloat(rowHeight)
     }
 }
 
 extension CurrencySecondViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard isEnableRefresh else { return }
         if indexPath.row == fetchDataResults.count-1 {
             fetchRequest()
         }
@@ -114,17 +118,10 @@ extension CurrencySecondViewController: UITableViewDelegate {
 
 extension CurrencySecondViewController: CustomCellSizeDelegate {
     func customCellDidFinishLoad(using height: CGFloat, at indexPath: IndexPath) {
-        guard
-            fetchDataResults[indexPath.row].rowHeight == nil,
-            let cell = currencyTableView.cellForRow(at: indexPath) as? CustomTableViewCell
-        else {
-            return
-        }
-
+        guard let cell = currencyTableView.cellForRow(at: indexPath) as? CustomTableViewCell else { return }
+        
         currencyTableView.beginUpdates()
-        cell.cellWebView.heightAnchor.constraint(greaterThanOrEqualToConstant: height/2).isActive = true
-        cell.setNeedsLayout()
-        cell.setNeedsDisplay()
+        preDefinedRowHeights.updateValue(Float(cell.cellImageView.frame.height+height/2), forKey: indexPath)
         currencyTableView.endUpdates()
     }
 }

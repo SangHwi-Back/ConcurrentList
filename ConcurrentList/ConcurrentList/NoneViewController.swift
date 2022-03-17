@@ -15,11 +15,12 @@ class NoneViewController: UIViewController {
         didSet {
             DispatchQueue.main.async {
                 self.noneTableView.reloadData()
+                self.refreshControl.endRefreshing()
             }
         }
     }
-    private var isEnableRefresh = true
     private let identifier = String(describing: CustomTableViewCell.self)
+    private var preDefinedRowHeights = [IndexPath: Float]()
     
     @IBOutlet weak var noneTableView: UITableView!
     
@@ -41,12 +42,10 @@ class NoneViewController: UIViewController {
     }
     
     @objc func refreshTableView(_ sender: Any) {
-        fetchRequest()
+        fetchRequest(isReload: true)
     }
     
     func fetchRequest(isReload: Bool = false) {
-        
-        guard isEnableRefresh else { return }
         
         if isReload {
             fetchDataResults.removeAll()
@@ -54,7 +53,7 @@ class NoneViewController: UIViewController {
         
         networkModel.sendRequest(from: fetchDataResults.count+1, to: fetchDataResults.count+10) { [weak self] culturalData in
             guard let self = self else { return }
-            guard let culturalData = culturalData else { self.isEnableRefresh.toggle(); return }
+            guard let culturalData = culturalData else { return }
             self.fetchDataResults.append(contentsOf: culturalData)
         }
     }
@@ -71,39 +70,33 @@ extension NoneViewController: UITableViewDataSource {
         }
         
         let model = fetchDataResults[indexPath.row]
-        cell.indexPath = indexPath
-        cell.delegate = self
-        cell.preDefinedRowHeight = model.rowHeight
         
-        cell.cellImageView.image = UIImage(systemName: "nosign")
+        cell.delegate = self
+        cell.numberLabel.text = "\(indexPath.row)"
+        
+        cell.indexPath = indexPath
+        
         if let url = URL(string: model.MAIN_IMG), let data = try? Data(contentsOf: url) {
             cell.cellImageView.image = UIImage(data: data)
         }
         
-        cell.cellWebView.pageZoom = 2
-        cell.cellWebView.loadHTMLString(model.FAC_DESC, baseURL: nil)
+        if model.preDefinedRowHeight == nil {
+            cell.cellWebView.loadHTMLString(model.FAC_DESC, baseURL: nil)
+        }
         
         return cell
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let cell = tableView.cellForRow(at: indexPath) as? CustomTableViewCell else {
+        guard fetchDataResults.count-1 >= indexPath.row, let rowHeight = preDefinedRowHeights[indexPath] else {
             return UITableView.automaticDimension
         }
-        
-        let rowHeight = fetchDataResults[indexPath.row].rowHeight ?? cell.preDefinedRowHeight
-        
-        if let rowHeight = rowHeight {
-            return CGFloat(rowHeight)
-        } else {
-            return UITableView.automaticDimension
-        }
+        return CGFloat(rowHeight)
     }
 }
 
 extension NoneViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard isEnableRefresh else { return }
         if indexPath.row == fetchDataResults.count-1 {
             fetchRequest()
         }
@@ -112,17 +105,10 @@ extension NoneViewController: UITableViewDelegate {
 
 extension NoneViewController: CustomCellSizeDelegate {
     func customCellDidFinishLoad(using height: CGFloat, at indexPath: IndexPath) {
-        guard
-            fetchDataResults[indexPath.row].rowHeight == nil,
-            let cell = noneTableView.cellForRow(at: indexPath) as? CustomTableViewCell
-        else {
-            return
-        }
-
+        guard let cell = noneTableView.cellForRow(at: indexPath) as? CustomTableViewCell else { return }
+        
         noneTableView.beginUpdates()
-        cell.cellWebView.heightAnchor.constraint(greaterThanOrEqualToConstant: height/2).isActive = true
-        cell.setNeedsLayout()
-        cell.setNeedsDisplay()
+        preDefinedRowHeights.updateValue(Float(cell.cellImageView.frame.height+height/2), forKey: indexPath)
         noneTableView.endUpdates()
     }
 }

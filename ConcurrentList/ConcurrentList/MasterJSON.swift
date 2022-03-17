@@ -60,7 +60,7 @@ struct MasterJSON: Codable {
             var RED: String
             var AIRPORT: String
             
-            var rowHeight: Float?
+            var preDefinedRowHeight: Float?
         }
         
         struct RESULT: Codable {
